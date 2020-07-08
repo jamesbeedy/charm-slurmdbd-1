@@ -1,4 +1,5 @@
 #! /usr/bin/env python3
+import json
 import logging
 import os
 import subprocess
@@ -13,14 +14,17 @@ from ops.charm import CharmBase
 
 from ops.main import main
 
-from ops.model import ActiveStatus
-
-from adapters.framework import FrameworkAdapter
+from ops.model import (
+    ActiveStatus,
+    BlockedStatus,
+)
 
 
 from slurm_ops_manager import SlurmOpsManager
 
 from interface_slurmdbd import SlurmdbdProvidesRelation
+
+from interface_mysql import MySQLClient
 
 
 class SlurmdbdCharm(CharmBase):
@@ -30,62 +34,68 @@ class SlurmdbdCharm(CharmBase):
         super().__init__(*args)
 
         self._state.set_default(db_info=None)
+        self._state.set_default(db_info_acquired=False)
+        self._state.set_default(ingress_address=str())
         
         self.slurm_ops_manager = SlurmOpsManager(self, "slurmdbd")
         self.slurmdbd = SlurmdbdProvidesRelation(self, "slurmdbd")
 
         self.db = MySQLClient(self, "db")
 
-        self.fw_adapter = FrameworkAdapter(self.framework) 
-
         event_handler_bindings = {
             self.db.on.database_available: self._on_database_available,
             self.on.install: self._on_install,
             self.on.start: self._on_start,
+            self.on.config_changed: self._on_config_changed,
+ 
         }
         for event, handler in event_handler_bindings.items():
-            self.fw_adapter.observe(event, handler)
+            self.framework.observe(event, handler)
         
     def _on_install(self, event):
-        handle_install(
-            event,
-            self.fw_adapter,
-            self.slurm_ops_manager,
-            self.slurmdbd,
-        )
+        self.slurm_ops_manager.prepare_system_for_slurm()
+        self.unit.status = ActiveStatus("Slurm Installed")
 
     def _on_start(self, event):
-        self.unit.status = ActiveStatus("Slurmdbdb Available")
+        pass
+            
+    def _on_config_changed(self, event):
+        if not (self._state.db_info_acquired and self.slurm_ops_manager.slurm_installed):
+            self.unit.status = BlockedStatus("Need relation to MySQL before starting slurmdbd.")
+            event.defer()
+            return
+        write_config_and_restart_slurmdbd(self)
 
     def _on_database_available(self, event):
-        handle_database_available(
-            event,
-            self.fw_adapter,
-            self._state,
-        )
+        """Render the database details into the slurmdbd.yaml and
+        set the snap.mode.
+        """
 
-def handle_install(event, fw_adapter, slurm_ops_manager, slurmdbd):
-    """
-    installs the slurm snap from edge channel if not provided as a resource
-    then connects to the network
-    """
-    slurm_ops_manage.prepare_system_for_slurm()
-    fw_adapter.set_unit_status(ActiveStatus("Slurm Installed"))
+        self._state.db_info = {
+            'db_username': event.db_info.user,
+            'db_password': event.db_info.password,
+            'db_hostname': event.db_info.host,
+            'db_port': event.db_info.port,
+            'db_name': event.db_info.database,
+        }
 
+        write_config_and_restart_slurmdbd(self)
+        self._state.db_info_acquired = True
+        
 
-def handle_database_available(event, fw_adapter, state):
-    """Render the database details into the slurmdbd.yaml and
-    set the snap.mode.
-    """
-
-    state.db_info = {
-        'user': event.db_info.user,
-        'password': event.db_info.password,
-        'host': event.db_info.host,
-        'port': event.db_info.port,
-        'database': event.db_info.database,
+def write_config_and_restart_slurmdbd(charm): 
+    slurmdbd_host_port_addr = {
+        'slurmdbd_hostname': charm.slurm_ops_manager.hostname,
+        'slurmdbd_port': charm.slurm_ops_manager.port,
+        'slurmdbd_ingress_address': "127.0.0.1",
     }
-    fw_adapter.set_unit_status(ActiveStatus("mysql available"))
+    slurmdbd_config = {
+        **slurmdbd_host_port_addr,
+        **charm.model.config,
+        **charm._state.db_info,
+    }
+    charm.slurm_ops_manager.render_config_and_restart(slurmdbd_config)
+    charm.unit.status = ActiveStatus("Slurmdbd Available")
 
 
 if __name__ == "__main__":

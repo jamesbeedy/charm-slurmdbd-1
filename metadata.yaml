@@ -1,17 +1,16 @@
 name: slurmdbd
-summary: Describe your charm here
+summary: Slurm DBD accounting daemon
 maintainers:
-    - Jesse <jesse@omnivector.solutions>
+    - OmniVector Solutions <info@omnivector.solutions>
 description: |
-    A nice long description of what the product does and any
-    high level information about how the charm provides the product,
-    on which platform, etc.
+    slurmdbd provides a secure enterprise-wide interface to a database for Slurm.
+    This is particularly useful for archiving accounting records.
 
 tags:
-    - slurm
+  - slurm
 
 series:
-    - focal
+  - focal
 
 provides:
   slurmdbd:
@@ -20,3 +19,9 @@ provides:
 requires:
   db:
     interface: mysql
+
+resources:
+  slurm:
+    type: file
+    filename: slurm.tar.gz
+    description: slurm tarbal
