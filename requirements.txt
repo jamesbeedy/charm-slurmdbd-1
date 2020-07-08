@@ -1,0 +1,5 @@
+ops
+git+https://github.com/omnivector-solutions/slurm-ops-manager.git@bdx_dev
+git+https://github.com/omnivector-solutions/interface-mysql.git@master
+git+https://github.com/jamesbeedy/interface-slurm-cluster-ops.git@bdx_init_dev
+
