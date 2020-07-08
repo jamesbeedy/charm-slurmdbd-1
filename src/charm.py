@@ -35,7 +35,6 @@ class SlurmdbdCharm(CharmBase):
 
         self._state.set_default(db_info=None)
         self._state.set_default(db_info_acquired=False)
-        self._state.set_default(ingress_address=str())
         
         self.slurm_ops_manager = SlurmOpsManager(self, "slurmdbd")
         self.slurmdbd = SlurmdbdProvidesRelation(self, "slurmdbd")
@@ -87,7 +86,6 @@ def write_config_and_restart_slurmdbd(charm):
     slurmdbd_host_port_addr = {
         'slurmdbd_hostname': charm.slurm_ops_manager.hostname,
         'slurmdbd_port': charm.slurm_ops_manager.port,
-        'slurmdbd_ingress_address': "127.0.0.1",
     }
     slurmdbd_config = {
         **slurmdbd_host_port_addr,
